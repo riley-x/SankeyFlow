@@ -25,7 +25,7 @@ See [example/msft_FY22q2.py](example/msft_FY22q2.py) for full example.
 
 ## Description
 
-While MPL does have a builtin sankey class, it is only capable of a single node. SankeyFlow allows for any number of nodes and flows between them. It also treats nodes and flows separately, so the node value, inflows, and outflows don't have to be equal. However, automatic node inference is also available (TODO). 
+While MAtplotlib does have a builtin sankey class, it is designed around single node flows (and in my opinion quite ugly). SankeyFlow focuses on directional cutflows and allows for any number of nodes and flows between them. It also treats nodes and flows separately, so the node value, inflows, and outflows don't have to be equal. However, automatic node inference is also available (TODO). 
 
 ![cutflow example](example/cutflow.png)
 
