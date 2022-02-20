@@ -25,7 +25,7 @@ See [example/msft_FY22q2.py](example/msft_FY22q2.py) for full example.
 
 ## Description
 
-While MPL does have a builtin sankeyflow class, it is only capable of a single node. SankeyFlow allows for any number of nodes and flows between them. It also treats nodes and flows separately, so the node value, inflows, and outflows don't have to be equal. However, automatic node inference is also available (TODO). 
+While MPL does have a builtin sankey class, it is only capable of a single node. SankeyFlow allows for any number of nodes and flows between them. It also treats nodes and flows separately, so the node value, inflows, and outflows don't have to be equal. However, automatic node inference is also available (TODO). 
 
 ![cutflow example](example/cutflow.png)
 
@@ -48,9 +48,8 @@ The core class is `sankeyflow.Sankey`, which builds and draws the diagram. Data 
 
 The diagram defaults to a left-to-right flow pattern, and breaks the nodes into "levels," which correspond to the x position. The cutflow diagram above has 5 levels, for example.
 
-`nodes` is a nested list of length `nlevels`, ordered from left to right. For each level, there is a list of nodes ordered from top to bottom. Each node is a `(name, value)` pair.
-
-`flows` is a list of flows, coded as `(source, destination, value)`. `source` and `destination` should match the `name`s in `nodes`.
+- `nodes` is a nested list of length `nlevels`, ordered from left to right. For each level, there is a list of nodes ordered from top to bottom. Each node is a `(name, value)` pair.
+- `flows` is a list of flows, coded as `(source, destination, value)`. `source` and `destination` should match the `name`s in `nodes`.
 
 If `nodes` is `None`, the nodes will be automatically inferred and placed from the flows (TODO).
 
