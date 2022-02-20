@@ -23,8 +23,8 @@ class SankeyNode:
         node.label_format = '{label} {value:,.2f}'
     '''
 
-    def __init__(self, x, y, width, height, name, 
-                    value=0, label='', label_format='{label}\n{value:,.0f}', label_pos='left', label_pad_x=0.01, label_opts=dict(fontsize=14), 
+    def __init__(self, x, y, width, height, name, value, 
+                    label='', label_format='{label}\n{value:,.0f}', label_pos='left', label_pad_x=0.01, label_opts=dict(fontsize=14), 
                     align_y='top', color='#FF33AA',
                     artist='rectangle', **kwargs):
         '''
@@ -196,7 +196,8 @@ class Sankey:
 
     def __init__(self, flows=None, nodes=None, align_y='top', 
                     cmap=plt.cm.tab10, flow_color_mode='dest', flow_color_mode_alpha=0.6, 
-                    node_width=0.03, node_pad_y_min=0.01, node_pad_y_max=0.05, **kwargs):
+                    node_width=0.03, node_pad_y_min=0.01, node_pad_y_max=0.05,
+                    node_opts={}, flow_opts={}, **kwargs):
         '''
         @param flows : see Sankey.sankey(). Can optionally input flows here as a shortcut
         @param nodes : see Sankey.sankey(). Can optionally input nodes here as a shortcut
@@ -208,14 +209,19 @@ class Sankey:
         @param node_width : width of the nodes, as fraction of distance between nodes
         @param node_pad_y_min : minimum vertical padding between nodes, as fraction of distance between nodes
         @param node_pad_y_max : maximum vertical padding between nodes, as fraction of distance between nodes
+        @param node_opts : a dictionary of options to SankeyNode() that is applied to all nodes
+        @param flow_opts : a dictionary of options to SankeyFlow() that is applied to all flows
         '''
         self.align_y = align_y
+        self.cmap = cmap
         self.flow_color_mode = flow_color_mode
         self.flow_color_mode_alpha = flow_color_mode_alpha
         self.node_width = node_width
         self.node_pad_y_min = node_pad_y_min
         self.node_pad_y_max = node_pad_y_max
-        self.cmap = cmap
+        self.node_opts = node_opts
+        self.flow_opts = flow_opts
+
         self.nodes = [] # Nested list of SankeyNode, indexed by (node_level, i_node)
         self.flows = [] # List of SankeyFlows
 
@@ -270,10 +276,11 @@ class Sankey:
                     if node[1] <= 0:
                         raise ValueError("Node value <= 0: {}".format(node))
                     height = node[1] / value_scale 
-                    args = dict(value=node[1], color=self.cmap(i_color % self.cmap.N))
+                    args = dict(color=self.cmap(i_color % self.cmap.N))
+                    args.update(self.node_opts)
                     if len(node) > 2:
                         args.update(node[2])
-                    arr.append(SankeyNode(level, y - height, self.node_width, height, node[0], **args))
+                    arr.append(SankeyNode(level, y - height, self.node_width, height, node[0], node[1], **args))
                     i_color += 1
                     y -= height + node_pad_y
             else:
@@ -315,6 +322,7 @@ class Sankey:
             
             # Create flow
             args = dict(color=color)
+            args.update(self.flow_opts)
             args.update(custom_opts)
             self.flows.append(SankeyFlow(src, des, flow[2], **args))
 

@@ -37,6 +37,10 @@ Requires Matplotlib and numpy.
 ```bash
 python3 -m pip install sankeyflow
 ```
+You can then simpliy
+```py
+from sankeyflow import Sankey
+```
 
 ## Usage
 
@@ -51,8 +55,6 @@ The diagram defaults to a left-to-right flow pattern, and breaks the nodes into 
 If `nodes` is `None`, the nodes will be automatically inferred and placed from the flows (TODO).
 
 ```
-from sankeyflow import Sankey
-
 nodes = [
     [('A', 10)],
     [('B1', 4), ('B2', 5)],
@@ -75,4 +77,66 @@ s.draw()
 
 Diagram and global configuration are set in the constructor. Individual nodes and flows can be further modified by adding a dictionary containing configuration arguments to the input tuples in `Sankey.sankey()`. See docstrings for complete argument lists. 
 
-For example, we can change the colormap to pastel, and also 
+For example, we can change the colormap to pastel, make all flows not curvy, and change the color of one flow.
+```py
+flows = [
+    ('A', 'B1', 4),
+    ('A', 'B2', 5),
+    ('B1', 'C', 1),
+    ('B2', 'C', 2, {'color': 'red'}),
+] 
+
+s = Sankey(
+    flows=flows,
+    nodes=nodes,
+    cmap=plt.cm.Pastel1,
+    flow_opts=dict(curvature=0),
+)
+s.draw()
+```
+
+![example 2](example/readme_2.png)
+
+By default the color of the flows is the color of the destination node. This can be altered globally or per-flow with `flow_color_mode`. 
+```py
+flows = [
+    ('A', 'B1', 4),
+    ('A', 'B2', 5, {'flow_color_mode': 'dest'}),
+    ('B1', 'C', 1),
+    ('B2', 'C', 2),
+] 
+
+s = Sankey(
+    flows=flows,
+    nodes=nodes,
+    flow_color_mode='source',
+)
+s.draw()
+```
+
+![example 3](example/readme_3.png)
+
+We can also easily adjust the label formatting and other node properties in the same way.
+```py
+nodes = [
+    [('A', 10)],
+    [('B1', 4), ('B2', 5)],
+    [('C', 3, {'label_pos':'top'})]
+]
+flows = [
+    ('A', 'B1', 4),
+    ('A', 'B2', 5),
+    ('B1', 'C', 1),
+    ('B2', 'C', 2),
+] 
+
+s = Sankey(
+    flows=flows,
+    nodes=nodes,
+    node_opts=dict(label_format='{label} ${value:.2f}'),
+)
+s.draw()
+```
+
+![example 4](example/readme_4.png)
+
