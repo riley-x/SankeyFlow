@@ -67,6 +67,7 @@ flows = [
     ('B2', 'C', 2),
 ] 
 
+plt.figure(figsize=(4, 3), dpi=144)
 s = Sankey(flows=flows, nodes=nodes)
 s.draw()
 ```
