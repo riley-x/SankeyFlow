@@ -38,7 +38,7 @@ class SankeyNode:
         @param color : any matplotlib color specifier
         @param label : alternative name to display. If not label, uses `name`
         @param label_format : format string that can optionally have 'label' and 'value' fields. Set to '' to remove labels
-        @param label_pos : position of the label {'left', 'top'}
+        @param label_pos : position of the label {'left', 'right', 'top', 'bottom', 'center'}
         @param label_pad_x : padding in x from the node, as fraction of distance between nodes
         @param label_opts : dictionary with additional options for the label. See matplotlib.axis.text() for options
         '''
@@ -93,13 +93,28 @@ class SankeyNode:
                 y = self.y + self.height / 2
                 ha = 'right'
                 va = 'center'
+            if self.label_pos == 'right':
+                x = self.x + self.width + self.label_pad_x
+                y = self.y + self.height / 2
+                ha = 'left'
+                va = 'center'
             elif self.label_pos == 'top':
                 x = self.x + self.width / 2
                 y = self.y + self.height
                 ha = 'center'
                 va = 'bottom'
+            elif self.label_pos == 'bottom':
+                x = self.x + self.width / 2
+                y = self.y
+                ha = 'center'
+                va = 'top'
+            elif self.label_pos == 'center':
+                x = self.x + self.width / 2
+                y = self.y + self.height / 2
+                ha = 'center'
+                va = 'center'
             else:
-                raise NotImplementedError("label_pos: " + self.label_pos)
+                raise ValueError("label_pos: " + self.label_pos)
             self.text = ax.text(x, y, self.label_format.format(label=self.label, value=self.value), ha=ha, va=va, **self.label_opts)
 
 
