@@ -238,6 +238,39 @@ class Sankey:
                     return (node, level)
         return (None, None)
 
+    @staticmethod
+    def infer_nodes(flows):
+        '''
+        Given a list of flows, automatically infers the nodes and returns them in a nested list which
+        can be directly input into sankey(). The flows must not have loops or backwards flows.
+
+        @param flows : See Sankey.sankey()
+        '''
+        from collections import defaultdict
+        nodes = defaultdict(lambda: [0, 0, 0, set(), set()]) # min_level, in_value, out_value, parents, children
+        max_level = 0
+
+        for flow in flows:
+            src = nodes[flow[0]]
+            des = nodes[flow[1]]
+            if des[0] <= src[0]:
+                des[0] = src[0] + 1
+                max_level = max(max_level, des[0])
+            src[2] += flow[2]
+            des[1] += flow[2]
+            src[4].add(flow[1])
+            des[3].add(flow[0])
+
+        arr = [[] for _ in range(max_level+1)]
+        for k,v in nodes.items():
+            # maximize the level
+            level = v[0]
+            for child in v[4]:
+                level = max(level, nodes[child][0] - 1)
+            arr[level].append([k, max(v[1], v[2])])
+
+        return arr
+
     
     def _level_node_padding(self, level_value, level_n):
         '''
@@ -250,7 +283,7 @@ class Sankey:
         return max(self.node_pad_y_min, min(max_padding, self.node_pad_y_max))
 
 
-    def sankey(self, flows, nodes):
+    def sankey(self, flows, nodes=None):
         '''
         @param flows : A list of flows as (source_name, dest_name, value) or (source_name, dest_name, value, opts),
                        where opts is a dictionary containing arguments to SankeyFlow(). opts may also contain key flow_color_mode with 
@@ -258,6 +291,10 @@ class Sankey:
         @param nodes : A list of node levels, from sources to destinations. In each level, a list of nodes as (name, value) or (name, value, opts),
                        where opts is a dictionary containing arguments to SankeyNode().
         '''
+
+        if not nodes:
+            nodes = self.infer_nodes(flows)
+
         # Get scaling
         _total_value_per_level = [sum(node[1] for node in level) for level in nodes]
         max_level_value = np.max(_total_value_per_level)
