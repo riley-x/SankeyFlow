@@ -11,9 +11,11 @@ from sankeyflow import Sankey
 flows = [
     ('Product', 'Total revenue', 20779),
     ('Sevice and other', 'Total revenue', 30949),
+    ('Total revenue', 'Gross margin', 34768),
+    ('Total revenue', 'Cost of revenue', 16960),
     ...
 ]
-s = Sankey(flows=flows, nodes=nodes)
+s = Sankey(flows=flows)
 s.draw()
 plt.show()
 ```
