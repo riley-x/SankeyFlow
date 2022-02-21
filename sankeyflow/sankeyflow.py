@@ -93,7 +93,7 @@ class SankeyNode:
                 y = self.y + self.height / 2
                 ha = 'right'
                 va = 'center'
-            if self.label_pos == 'right':
+            elif self.label_pos == 'right':
                 x = self.x + self.width + self.label_pad_x
                 y = self.y + self.height / 2
                 ha = 'left'
@@ -216,6 +216,7 @@ class Sankey:
         '''
         @param flows : see Sankey.sankey(). Can optionally input flows here as a shortcut
         @param nodes : see Sankey.sankey(). Can optionally input nodes here as a shortcut
+        @param align_y : vertical alignment of the nodes {'top', 'center', 'bottom', 'justify'}
         @param cmap : colormap for default colors
         @param flow_color_mode : {'source', 'dest', 'lesser', 'greater', None}
                     'source', 'dest' : the flows will be colored the same as the source/destination node
@@ -287,16 +288,50 @@ class Sankey:
         return arr
 
     
-    def _level_node_padding(self, level_value, level_n):
+    def _level_node_max_padding(self, level_value, level_n):
         '''
         @param level_value : Total value in this level, AFTER scaling
-        @returns the padding to use in this level
+        @returns the max padding that can be used in this level
         '''
         if level_n < 2:
             return 0
-        max_padding = (1 - level_value) / (level_n - 1)
-        return max(self.node_pad_y_min, min(max_padding, self.node_pad_y_max))
+        return (1 - level_value) / (level_n - 1)
 
+    def _get_node_ys(self, nodes, value_scale):
+        '''
+        Returns the y-positions of the nodes in a single level as (y_low, height)
+        '''
+        # Get padding
+        max_padding = self._level_node_max_padding(sum(node[1] for node in nodes) / value_scale, len(nodes))
+        if self.align_y == 'justify':
+            node_pad_y = max_padding
+        else:
+            node_pad_y = min(max_padding, self.node_pad_y_max)
+
+        # Special case for n=1 with align = center or justify. align = top or bottom can use the general code below
+        if len(nodes) == 1 and self.align_y in ['center', 'justify']:
+            height = nodes[0][1] / value_scale
+            pad = (1 - height) / 2
+            return [(pad, height)]
+
+        # General case
+        ys = []
+        if self.align_y == 'bottom':
+            y = 0
+            for node in reversed(nodes):
+                height = node[1] / value_scale
+                ys.insert(0, (y, height))
+                y += height + node_pad_y
+        else:
+            y = 1
+            if self.align_y == 'center':
+                y -= (max_padding - node_pad_y) * (len(nodes) - 1) / 2
+            for node in nodes:
+                height = node[1] / value_scale
+                y -= height
+                ys.append((y, height))
+                y -= node_pad_y
+        return ys
 
     def sankey(self, flows, nodes=None):
         '''
@@ -314,30 +349,24 @@ class Sankey:
         _total_value_per_level = [sum(node[1] for node in level) for level in nodes]
         max_level_value = np.max(_total_value_per_level)
         max_level_n = np.max([len(level) for level,val in zip(nodes,_total_value_per_level) if max_level_value - val < 1e-5])
-        value_scale = max_level_value / (1 - self.node_pad_y_min * (max_level_n - 1))
+        value_scale = max_level_value / (1 - self.node_pad_y_min * (max_level_n - 1)) # i.e. padding on widest level is self.node_pad_y_min
 
         # Nodes
         self.nodes = []
         i_color = 0 # for automatic coloring
-        for level,node_level in enumerate(nodes):
+        for level,nodes_level in enumerate(nodes):
             arr = [] # nodes in this level
-            node_pad_y = self._level_node_padding(_total_value_per_level[level] / value_scale, len(node_level))
-            if self.align_y == 'top':
-                y = 1
-                for node in node_level:
-                    if node[1] <= 0:
-                        raise ValueError("Node value <= 0: {}".format(node))
-                    height = node[1] / value_scale 
-                    args = dict(color=self.cmap(i_color % self.cmap.N))
-                    args.update(self.node_opts)
-                    if len(node) > 2:
-                        args.update(node[2])
-                    arr.append(SankeyNode(level, y - height, self.node_width, height, node[0], node[1], **args))
-                    i_color += 1
-                    y -= height + node_pad_y
-            else:
-                raise NotImplementedError("align_y: " + align_y)
-            
+            ys = self._get_node_ys(nodes_level, value_scale)
+            for node,(y,height) in zip(nodes_level, ys):
+                # Node configuration
+                args = dict(color=self.cmap(i_color % self.cmap.N))
+                args.update(self.node_opts) # global options
+                if len(node) > 2:
+                    args.update(node[2]) # individual options
+
+                # Create node
+                arr.append(SankeyNode(level, y, self.node_width, height, node[0], node[1], **args))
+                i_color += 1
             self.nodes.append(arr)
 
         # Flows
