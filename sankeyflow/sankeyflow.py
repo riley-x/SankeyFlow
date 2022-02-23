@@ -63,9 +63,9 @@ class SankeyNode:
         self.text = None
 
 
-    def get_flow_y(self, i, side='inflows'):
+    def get_flow_y(self, i, side):
         '''
-        Returns the (y_low, y_hi) position of flow i on the given side
+        Returns the (y_low, y_hi) position of flow i on the given side {'inflows', 'outflows'}
         '''
         flows = getattr(self, side)
         if self.align_y == 'top':
@@ -346,9 +346,15 @@ class Sankey:
             nodes = self.infer_nodes(flows)
 
         # Get scaling
-        _total_value_per_level = [sum(node[1] for node in level) for level in nodes]
-        max_level_value = np.max(_total_value_per_level)
-        max_level_n = np.max([len(level) for level,val in zip(nodes,_total_value_per_level) if max_level_value - val < 1e-5])
+        max_level = 0
+        max_level_value = 0
+        max_level_n = 0
+        for i,nodes_level in enumerate(nodes):
+            val = sum(node[1] for node in nodes_level)
+            if (np.isclose(val, max_level_value) and len(nodes_level) > max_level_n) or val > max_level_value:
+                max_level = i
+                max_level_value = val
+                max_level_n = len(nodes_level)
         value_scale = max_level_value / (1 - self.node_pad_y_min * (max_level_n - 1)) # i.e. padding on widest level is self.node_pad_y_min
 
         # Nodes
@@ -406,6 +412,55 @@ class Sankey:
             args.update(self.flow_opts)
             args.update(custom_opts)
             self.flows.append(SankeyFlow(src, des, flow[2], **args))
+
+        # Post-creation layout
+        if self.align_y == 'tree':
+            self._layout_tree(max_level)
+    
+    def _layout_tree(self, max_level):
+        '''
+        Adjusts the positions of self.nodes to group sibling nodes next to each other and their parent. Works best when the nodes form
+        a tree structure. This should be called after the flows are created but before draw(). 
+
+        The algorithm starts from max_level and works its way out in both directions (TODO). Note that the ordering of the nodes
+        (in top-to-bottom order) always takes precedence.  
+        '''
+        for nodes_level in self.nodes[max_level+1:]:
+            # Get the ideal y position such that the flows are horizontal. For nodes with a single parent,
+            # this is simply the y of the flow. For nodes with multiple parents, use a weighted average 
+            y_ideal = np.ones(len(nodes_level)) # parentless nodes are pushed up
+            for i,node in enumerate(nodes_level):
+                node.y = 0 # needed when we call get_flow_y below
+                if not node.inflows:
+                    continue
+                total_ys = 0
+                total_weights = 0
+                for flow in node.inflows:
+                    y_src = flow.src.get_flow_y(flow.src_i, "outflows")[0]
+                    y_des_node = node.get_flow_y(flow.des_i, "inflows")[0] # since we set y to 0 above, this is the position of the flow in the node
+                    y_ideal_node = np.clip(y_src - y_des_node, 0, 1)
+                    total_ys += y_ideal_node * flow.value
+                    total_weights += flow.value
+                y_ideal[i] = total_ys / total_weights
+
+            # Get the maximum height each node can have
+            heights = np.array([node.height for node in nodes_level])
+            y_max = 1 - (np.cumsum(heights) + np.arange(len(heights)) * self.node_pad_y_min)
+            y_flex = y_max[-1] # amount of extra y space available
+
+            # Start the nodes from their maximum (top) position, then calculate the amount of "stress" each node
+            # has to reach its ideal position. Large stress = wants to move down, negative stress = wants to move up.
+            # If a single node wants to push down but the ones below it want to move up, we want to average
+            # the stresses such that no node is too selfish. So use a weighted average of all nodes below it.
+            y_stress = y_max - y_ideal
+            average_stress = (np.cumsum(y_stress[::-1]) / np.arange(1, len(y_stress)+1))[::-1]
+            y_desired_shift = np.clip(np.minimum(y_stress, average_stress), 0, y_flex)
+            y_shift = np.maximum.accumulate(y_desired_shift) # if one node pushes down, the subsequent nodes must follow by at least as much
+            y_new = y_max - y_shift
+
+            for node,pos in zip(nodes_level, y_new):
+                node.y = pos
+
 
     def draw(self, ax=None):
         # Get axes
