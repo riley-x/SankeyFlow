@@ -216,7 +216,7 @@ class Sankey:
         '''
         @param flows : see Sankey.sankey(). Can optionally input flows here as a shortcut
         @param nodes : see Sankey.sankey(). Can optionally input nodes here as a shortcut
-        @param align_y : vertical alignment of the nodes {'top', 'center', 'bottom', 'justify'}
+        @param align_y : vertical alignment of the nodes {'top', 'center', 'bottom', 'justify', 'tree', 'tree clamp'}
         @param cmap : colormap for default colors
         @param flow_color_mode : {'source', 'dest', 'lesser', 'greater', None}
                     'source', 'dest' : the flows will be colored the same as the source/destination node
@@ -414,7 +414,7 @@ class Sankey:
             self.flows.append(SankeyFlow(src, des, flow[2], **args))
 
         # Post-creation layout
-        if self.align_y == 'tree':
+        if 'tree' in self.align_y:
             self._layout_tree(max_level)
     
     def _layout_tree(self, max_level):
@@ -454,7 +454,9 @@ class Sankey:
             # the stresses such that no node is too selfish. So use a weighted average of all nodes below it.
             y_stress = y_max - y_ideal
             average_stress = (np.cumsum(y_stress[::-1]) / np.arange(1, len(y_stress)+1))[::-1]
-            y_desired_shift = np.clip(np.minimum(y_stress, average_stress), 0, y_flex)
+            y_desired_shift = np.minimum(y_stress, average_stress)
+            if 'clamp' in self.align_y: # we can clip here to ensure height of plot = 1 = widest layer, but not clipping looks fine too
+                y_desired_shift = np.clip(y_desired_shift, 0, y_flex) 
             y_shift = np.maximum.accumulate(y_desired_shift) # if one node pushes down, the subsequent nodes must follow by at least as much
             y_new = y_max - y_shift
 
