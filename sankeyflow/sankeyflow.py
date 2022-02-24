@@ -211,7 +211,7 @@ class Sankey:
 
     def __init__(self, flows=None, nodes=None, align_y='top', 
                     cmap=plt.cm.tab10, flow_color_mode='dest', flow_color_mode_alpha=0.6, 
-                    node_width=0.03, node_pad_y_min=0.01, node_pad_y_max=0.05,
+                    node_width=0.03, node_height_pad_min=0, node_pad_y_min=0.01, node_pad_y_max=0.05,
                     node_opts={}, flow_opts={}, **kwargs):
         '''
         @param flows : see Sankey.sankey(). Can optionally input flows here as a shortcut
@@ -223,6 +223,7 @@ class Sankey:
                     'lesser', 'greater' : the flows will be colored as the node with the lesser/greater value 
         @param flow_color_mode_alpha : transparency of the flows
         @param node_width : width of the nodes, as fraction of distance between nodes
+        @param node_height_pad_min : if node.height < node_height_pad_min, adds additional y padding. Value is a fraction of axis height.
         @param node_pad_y_min : minimum vertical padding between nodes, as fraction of distance between nodes
         @param node_pad_y_max : maximum vertical padding between nodes, as fraction of distance between nodes
         @param node_opts : a dictionary of options to SankeyNode() that is applied to all nodes
@@ -233,6 +234,7 @@ class Sankey:
         self.flow_color_mode = flow_color_mode
         self.flow_color_mode_alpha = flow_color_mode_alpha
         self.node_width = node_width
+        self.node_height_pad_min = node_height_pad_min
         self.node_pad_y_min = node_pad_y_min
         self.node_pad_y_max = node_pad_y_max
         self.node_opts = node_opts
@@ -287,22 +289,44 @@ class Sankey:
 
         return arr
 
-    
-    def _level_node_max_padding(self, level_value, level_n):
+
+    def _value_scale_level(self, nodes_level):
         '''
-        @param level_value : Total value in this level, AFTER scaling
+        Finds the value scale such that this level ranges exactly from y=[0,1] including padding
+        '''
+        min_pad = self.node_pad_y_min * (len(nodes_level) - 1)
+        heights = np.array([node[1] for node in nodes_level])
+        scale = np.sum(heights) / (1 - min_pad)
+        if self.node_height_pad_min == 0:
+            return scale
+        else:
+            if self.node_height_pad_min * len(nodes_level) + min_pad > 1:
+                raise ValueError('sankey: node_height_pad_min {} is too large for level with size {}'.format(self.node_height_pad_min, len(nodes_level)))
+            
+            nsmall = 0
+            while (smalls := heights / scale <= self.node_height_pad_min).any(): # any smalls left over = we need to increase the scale
+                nsmall += np.count_nonzero(smalls)
+                heights = heights[~smalls]
+                scale = np.sum(heights) / (1 - min_pad - nsmall * self.node_height_pad_min)
+
+            return scale
+
+    def _level_node_max_padding(self, nodes, value_scale):
+        '''
         @returns the max padding that can be used in this level
         '''
-        if level_n < 2:
+        if len(nodes) < 2:
             return 0
-        return (1 - level_value) / (level_n - 1)
+        heights = np.array([node[1] for node in nodes]) / value_scale
+        level_value = np.sum(np.maximum(heights, self.node_height_pad_min))
+        return (1 - level_value) / (len(nodes) - 1)
 
     def _get_node_ys(self, nodes, value_scale):
         '''
         Returns the y-positions of the nodes in a single level as (y_low, height)
         '''
         # Get padding
-        max_padding = self._level_node_max_padding(sum(node[1] for node in nodes) / value_scale, len(nodes))
+        max_padding = self._level_node_max_padding(nodes, value_scale)
         if self.align_y == 'justify':
             node_pad_y = max_padding
         else:
@@ -320,8 +344,13 @@ class Sankey:
             y = 0
             for node in reversed(nodes):
                 height = node[1] / value_scale
-                ys.insert(0, (y, height))
-                y += height + node_pad_y
+                if height < self.node_height_pad_min:
+                    pos = y + (self.node_height_pad_min - height) / 2
+                    ys.insert(0, (pos, height))
+                    y += self.node_height_pad_min + node_pad_y
+                else:
+                    ys.insert(0, (y, height))
+                    y += actual_height + node_pad_y
         else:
             y = 1
             if self.align_y == 'center':
@@ -329,7 +358,12 @@ class Sankey:
             for node in nodes:
                 height = node[1] / value_scale
                 y -= height
-                ys.append((y, height))
+                if height < self.node_height_pad_min:
+                    y -= (self.node_height_pad_min - height) / 2
+                    ys.append((y, height))
+                    y -= (self.node_height_pad_min - height) / 2
+                else:
+                    ys.append((y, height))
                 y -= node_pad_y
         return ys
 
@@ -345,17 +379,14 @@ class Sankey:
         if not nodes:
             nodes = self.infer_nodes(flows)
 
-        # Get scaling
-        max_level = 0
-        max_level_value = 0
-        max_level_n = 0
+        # Get scaling. The widest level should extend exactly from y = 0 to 1 including padding
+        widest_level = 0
+        value_scale = 0
         for i,nodes_level in enumerate(nodes):
-            val = sum(node[1] for node in nodes_level)
-            if (np.isclose(val, max_level_value) and len(nodes_level) > max_level_n) or val > max_level_value:
-                max_level = i
-                max_level_value = val
-                max_level_n = len(nodes_level)
-        value_scale = max_level_value / (1 - self.node_pad_y_min * (max_level_n - 1)) # i.e. padding on widest level is self.node_pad_y_min
+            scale = self._value_scale_level(nodes_level)
+            if scale > value_scale:
+                value_scale = scale
+                widest_level = i
 
         # Nodes
         self.nodes = []
@@ -415,8 +446,60 @@ class Sankey:
 
         # Post-creation layout
         if 'tree' in self.align_y:
-            self._layout_tree(max_level)
+            self._layout_tree(widest_level)
     
+
+    def _layout_tree_level(self, nodes_level, right):
+        '''
+        @param right : This level is right of the max level, and will base the ideal positions off of the nodes' parents. Otherwise, uses the children.
+        '''
+        # Get the ideal y position such that the flows are horizontal. For nodes with a single parent,
+        # this is simply the y of the flow. For nodes with multiple parents, use a weighted average.
+        y_ideal = np.zeros(len(nodes_level))
+        has_stress = np.ones(len(nodes_level), dtype=bool)
+        for i,node in enumerate(nodes_level):
+            node.y = 0 # needed when we call get_flow_y below
+            total_ys = 0
+            total_weights = 0
+            for flow in node.inflows if right else node.outflows:
+                if right:
+                    y_anchor = flow.src.get_flow_y(flow.src_i, "outflows")[0]
+                    y_flow_node = node.get_flow_y(flow.des_i, "inflows")[0] # since we set y to 0 above, this is the position of the flow in the node
+                else:
+                    y_anchor = flow.des.get_flow_y(flow.des_i, "inflows")[0]
+                    y_flow_node = node.get_flow_y(flow.src_i, "outflows")[0] # since we set y to 0 above, this is the position of the flow in the node
+                y_ideal_node = np.clip(y_anchor - y_flow_node, 0, 1)
+                total_ys += y_ideal_node * flow.value
+                total_weights += flow.value
+            if total_weights > 0:
+                y_ideal[i] = total_ys / total_weights
+            else:
+                has_stress[i] = False
+
+        # Get the maximum height each node can have
+        heights = np.maximum([node.height for node in nodes_level], self.node_height_pad_min)
+        y_max = 1 - (np.cumsum(heights) + np.arange(len(heights)) * self.node_pad_y_min)
+        y_flex = y_max[-1] # amount of extra y space available
+
+        # Start the nodes from their maximum (top) position, then calculate the amount of "stress" each node
+        # has to reach its ideal position. Large stress = wants to move down, negative stress = wants to move up.
+        # If a single node wants to push down but the ones below it want to move up, we want to average
+        # the stresses such that no node is too selfish. So use a weighted average of all nodes below it.
+        y_stress = (y_max - y_ideal) * has_stress
+        average_stress = (np.cumsum(y_stress[::-1]) / np.cumsum(has_stress[::-1]))[::-1]
+        y_desired_shift = np.minimum(y_stress, average_stress)
+        if 'clamp' in self.align_y: # we can clip here to ensure height of plot = 1 = widest layer, but not clipping looks fine too
+            y_desired_shift = np.clip(y_desired_shift, 0, y_flex) 
+        y_shift = np.maximum.accumulate(y_desired_shift) # if one node pushes down, the subsequent nodes must follow by at least as much
+        y_new = y_max - y_shift
+
+        # Set the new positions
+        for node,pos in zip(nodes_level, y_new):
+            if node.height >= self.node_height_pad_min:
+                node.y = pos
+            else:
+                node.y = pos + (self.node_height_pad_min - node.height) / 2
+
     def _layout_tree(self, max_level):
         '''
         Adjusts the positions of self.nodes to group sibling nodes next to each other and their parent. Works best when the nodes form
@@ -425,44 +508,10 @@ class Sankey:
         The algorithm starts from max_level and works its way out in both directions (TODO). Note that the ordering of the nodes
         (in top-to-bottom order) always takes precedence.  
         '''
-        for nodes_level in self.nodes[max_level+1:]:
-            # Get the ideal y position such that the flows are horizontal. For nodes with a single parent,
-            # this is simply the y of the flow. For nodes with multiple parents, use a weighted average 
-            y_ideal = np.ones(len(nodes_level)) # parentless nodes are pushed up
-            for i,node in enumerate(nodes_level):
-                node.y = 0 # needed when we call get_flow_y below
-                if not node.inflows:
-                    continue
-                total_ys = 0
-                total_weights = 0
-                for flow in node.inflows:
-                    y_src = flow.src.get_flow_y(flow.src_i, "outflows")[0]
-                    y_des_node = node.get_flow_y(flow.des_i, "inflows")[0] # since we set y to 0 above, this is the position of the flow in the node
-                    y_ideal_node = np.clip(y_src - y_des_node, 0, 1)
-                    total_ys += y_ideal_node * flow.value
-                    total_weights += flow.value
-                y_ideal[i] = total_ys / total_weights
-
-            # Get the maximum height each node can have
-            heights = np.array([node.height for node in nodes_level])
-            y_max = 1 - (np.cumsum(heights) + np.arange(len(heights)) * self.node_pad_y_min)
-            y_flex = y_max[-1] # amount of extra y space available
-
-            # Start the nodes from their maximum (top) position, then calculate the amount of "stress" each node
-            # has to reach its ideal position. Large stress = wants to move down, negative stress = wants to move up.
-            # If a single node wants to push down but the ones below it want to move up, we want to average
-            # the stresses such that no node is too selfish. So use a weighted average of all nodes below it.
-            y_stress = y_max - y_ideal
-            average_stress = (np.cumsum(y_stress[::-1]) / np.arange(1, len(y_stress)+1))[::-1]
-            y_desired_shift = np.minimum(y_stress, average_stress)
-            if 'clamp' in self.align_y: # we can clip here to ensure height of plot = 1 = widest layer, but not clipping looks fine too
-                y_desired_shift = np.clip(y_desired_shift, 0, y_flex) 
-            y_shift = np.maximum.accumulate(y_desired_shift) # if one node pushes down, the subsequent nodes must follow by at least as much
-            y_new = y_max - y_shift
-
-            for node,pos in zip(nodes_level, y_new):
-                node.y = pos
-
+        for nodes_level in self.nodes[max_level + 1:]:
+            self._layout_tree_level(nodes_level, True)
+        for nodes_level in reversed(self.nodes[:max_level]):
+            self._layout_tree_level(nodes_level, False)
 
     def draw(self, ax=None):
         # Get axes
