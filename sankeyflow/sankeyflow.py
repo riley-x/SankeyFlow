@@ -395,6 +395,10 @@ class Sankey:
             arr = [] # nodes in this level
             ys = self._get_node_ys(nodes_level, value_scale)
             for node,(y,height) in zip(nodes_level, ys):
+                # Error check
+                if node[1] < 0:
+                    print('Warning: Node has value < 0: {}'.format(node))
+
                 # Node configuration
                 args = dict(color=self.cmap(i_color % self.cmap.N))
                 args.update(self.node_opts) # global options
@@ -414,11 +418,11 @@ class Sankey:
 
             # Error check
             if not src:
-                raise KeyError("Bad flow - couldn't find node: {}".format(flow[0]))
+                raise KeyError("Bad flow - couldn't find souce node: {}".format(flow))
             if not des:
-                raise KeyError("Bad flow - couldn't find node: {}".format(flow[1]))
-            if flow[2] > src.value or flow[2] > des.value or flow[2] <= 0:
-                raise ValueError("Bad flow - bad weight: {}".format(flow[2]))
+                raise KeyError("Bad flow - couldn't find destination node: {}".format(flow))
+            if flow[2] > src.value or flow[2] > des.value or flow[2] < 0:
+                print("Warning: Bad flow - bad weight: {}".format(flow))
             if des_level <= src_level:
                 raise ValueError("Bad flow - flow is backwards: {}".format(flow))
 
@@ -477,8 +481,15 @@ class Sankey:
                 has_stress[i] = False
 
         # Get the maximum height each node can have
-        heights = np.maximum([node.height for node in nodes_level], self.node_height_pad_min)
-        y_max = 1 - (np.cumsum(heights) + np.arange(len(heights)) * self.node_pad_y_min)
+        y_max = np.zeros(len(nodes_level))
+        y = 1
+        for i,node in enumerate(nodes_level):
+            if node.height < self.node_height_pad_min:
+                y_max[i] = y - (self.node_height_pad_min + node.height) / 2
+                y -= self.node_height_pad_min + self.node_pad_y_min
+            else:
+                y_max[i] = y - node.height
+                y -= node.height + self.node_pad_y_min
         y_flex = y_max[-1] # amount of extra y space available
 
         # Start the nodes from their maximum (top) position, then calculate the amount of "stress" each node
@@ -495,10 +506,7 @@ class Sankey:
 
         # Set the new positions
         for node,pos in zip(nodes_level, y_new):
-            if node.height >= self.node_height_pad_min:
-                node.y = pos
-            else:
-                node.y = pos + (self.node_height_pad_min - node.height) / 2
+            node.y = pos
 
     def _layout_tree(self, max_level):
         '''
