@@ -411,7 +411,6 @@ class Sankey:
             if scale > value_scale:
                 value_scale = scale
                 widest_level = level
-        print(widest_level, value_scale)
 
         # Nodes
         self.nodes = []
