@@ -34,7 +34,7 @@ class SankeyNode:
         @param height : total extent of axis is 1
         @param name : aunique name to refer to this node
         @param value : the value of this node
-        @param align_y : how to align the flows that enter/exit the node. Options: {'top'}
+        @param align_y : how to align the flows that enter/exit the node. Options: {'top', 'top overlap'}
         @param color : any matplotlib color specifier
         @param label : alternative name to display. If not label, uses `name`
         @param label_format : format string that can optionally have 'label' and 'value' fields. Set to '' to remove labels
@@ -68,13 +68,21 @@ class SankeyNode:
         Returns the (y_low, y_hi) position of flow i on the given side {'inflows', 'outflows'}
         '''
         flows = getattr(self, side)
-        if self.align_y == 'top':
-            value_scale = self.value / (self.height - self.flow_pad * (len(flows) - 1))
+        value_scale = self.value / (self.height - self.flow_pad * (len(flows) - 1))
+        if self.align_y == 'top overlap':
+            if (total := sum(x.value for x in flows)) > self.value:
+                overlap = (total - self.value) / (len(flows) - 1) / value_scale
+                y1 = self.y + self.height - (np.sum([x.value for x in flows[:i]]) / value_scale + (self.flow_pad - overlap) * i)
+                y0 = y1 - flows[i].value / value_scale
+                return (y0, y1)
+            # else use 'top' below
+        
+        if 'top' in self.align_y:
             y1 = self.y + self.height - (np.sum([x.value for x in flows[:i]]) / value_scale + self.flow_pad * i)
             y0 = y1 - flows[i].value / value_scale
             return (y0, y1)
         else:
-            raise NotImplementedError("align_y: " + align_y)
+            raise NotImplementedError("align_y: " + self.align_y)
 
     def draw(self, ax):
         # Node
@@ -497,7 +505,7 @@ class Sankey:
         # If a single node wants to push down but the ones below it want to move up, we want to average
         # the stresses such that no node is too selfish. So use a weighted average of all nodes below it.
         y_stress = (y_max - y_ideal) * has_stress
-        average_stress = (np.cumsum(y_stress[::-1]) / np.cumsum(has_stress[::-1]))[::-1]
+        average_stress = (np.cumsum(y_stress[::-1]) / np.maximum(1, np.cumsum(has_stress[::-1])))[::-1]
         y_desired_shift = np.minimum(y_stress, average_stress)
         if 'clamp' in self.align_y: # we can clip here to ensure height of plot = 1 = widest layer, but not clipping looks fine too
             y_desired_shift = np.clip(y_desired_shift, 0, y_flex) 
