@@ -26,7 +26,7 @@ class SankeyNode:
     def __init__(self, x, y, width, height, name, value, 
                     label='', label_format='{label}\n{value:,.0f}', label_pos='left', label_pad_x=0.01, label_opts=dict(fontsize=14), 
                     align_y='top', color='#FF33AA',
-                    artist='rectangle', **kwargs):
+                    artist_type='rectangle', **kwargs):
         '''
         @param x : left edge, typically the flow level, as a 0-indexed integer. 1 = distance between nodes 
         @param y : bottom edge, between [0, 1]
@@ -53,7 +53,7 @@ class SankeyNode:
         self.label_pos = label_pos
         self.label_pad_x = label_pad_x
         self.label_opts = label_opts
-        self.artist_type = artist
+        self.artist_type = artist_type
         self.align_y = align_y
         self.color = color
         self.flow_pad = 0 # vertical padding between flow endpoints
@@ -70,7 +70,7 @@ class SankeyNode:
         flows = getattr(self, side)
         value_scale = self.value / (self.height - self.flow_pad * (len(flows) - 1))
         if self.align_y == 'top overlap':
-            if (total := sum(x.value for x in flows)) > self.value:
+            if len(flows) > 1 and (total := sum(x.value for x in flows)) > self.value:
                 overlap = (total - self.value) / (len(flows) - 1) / value_scale
                 y1 = self.y + self.height - (np.sum([x.value for x in flows[:i]]) / value_scale + (self.flow_pad - overlap) * i)
                 y0 = y1 - flows[i].value / value_scale
@@ -473,7 +473,7 @@ class Sankey:
             self.flows.append(SankeyFlow(src, des, flow[2], **args))
 
         # Post-creation layout
-        if 'tree' in self.align_y:
+        if isinstance(self.align_y, list) or isinstance(self.align_y, tuple) or 'tree' in self.align_y:
             self._layout_tree(widest_level)
     
 
@@ -483,6 +483,7 @@ class Sankey:
         '''
         # Options
         align_y = self._get_opt('align_y', level)
+        if 'tree' not in align_y: return
         node_pad_y_min = self._get_opt('node_pad_y_min', level)
         node_height_pad_min = self._get_opt('node_height_pad_min', level)
         nodes_level = self.nodes[level]
