@@ -68,7 +68,7 @@ class SankeyNode:
         Returns the (y_low, y_hi) position of flow i on the given side {'inflows', 'outflows'}
         '''
         flows = getattr(self, side)
-        value_attr = "end_value" if side == "outflows" else "start_value"
+        value_attr = "end_value" if side == "inflows" else "start_value"
         value_scale = self.value / (self.height - self.flow_pad * (len(flows) - 1))
         if self.align_y == 'top overlap':
             if len(flows) > 1 and (total := sum(getattr(x, value_attr) for x in flows)) > self.value:
