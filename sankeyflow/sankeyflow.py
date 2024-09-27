@@ -68,18 +68,19 @@ class SankeyNode:
         Returns the (y_low, y_hi) position of flow i on the given side {'inflows', 'outflows'}
         '''
         flows = getattr(self, side)
+        value_attr = "end_value" if side == "outflows" else "start_value"
         value_scale = self.value / (self.height - self.flow_pad * (len(flows) - 1))
         if self.align_y == 'top overlap':
-            if len(flows) > 1 and (total := sum(x.value for x in flows)) > self.value:
+            if len(flows) > 1 and (total := sum(getattr(x, value_attr) for x in flows)) > self.value:
                 overlap = (total - self.value) / (len(flows) - 1) / value_scale
-                y1 = self.y + self.height - (np.sum([x.value for x in flows[:i]]) / value_scale + (self.flow_pad - overlap) * i)
-                y0 = y1 - flows[i].value / value_scale
+                y1 = self.y + self.height - (np.sum([getattr(x, value_attr) for x in flows[:i]]) / value_scale + (self.flow_pad - overlap) * i)
+                y0 = y1 - getattr(flows[i], value_attr) / value_scale
                 return (y0, y1)
             # else use 'top' below
         
         if 'top' in self.align_y:
-            y1 = self.y + self.height - (np.sum([x.value for x in flows[:i]]) / value_scale + self.flow_pad * i)
-            y0 = y1 - flows[i].value / value_scale
+            y1 = self.y + self.height - (np.sum([getattr(x, value_attr) for x in flows[:i]]) / value_scale + self.flow_pad * i)
+            y0 = y1 - getattr(flows[i], value_attr) / value_scale
             return (y0, y1)
         else:
             raise NotImplementedError("align_y: " + self.align_y)
@@ -145,15 +146,17 @@ class SankeyFlow:
         Path.CLOSEPOLY
     ]
 
-    def __init__(self, src, des, value, curvature = 0.3, color='#AAAAAA66', **kwargs):
+    def __init__(self, src, des, start_value, end_value, curvature = 0.3, color='#AAAAAA66', **kwargs):
         '''
         @param src : the source node
         @param des : the destination node
-        @param value : value of the flow
+        @param start_value : The start value of the flow
+        @param end_value : The end value of the flow
         @param curvature : how curvy the flows are, with 0 = no curve and 1 = maximal curve
         @param color : Any matplotlib color specifier
         '''
-        self.value = value
+        self.start_value = start_value
+        self.end_value = end_value
         self.curvature = curvature
         self.color = color
         self.node_pad = 0 # x padding from the node (sometimes they overlap), as fraction of distance between nodes in x
@@ -439,13 +442,19 @@ class Sankey:
         for flow in flows:
             (src, src_level) = self.find_node(flow[0])
             (des, des_level) = self.find_node(flow[1])
+            flow_vals = flow[2]
+            try:
+                start_val = flow_vals[0]
+                end_val = flow_vals[1]
+            except:
+                start_val = end_val = flow_vals
 
             # Error check
             if not src:
                 raise KeyError("Bad flow - couldn't find souce node: {}".format(flow))
             if not des:
                 raise KeyError("Bad flow - couldn't find destination node: {}".format(flow))
-            if flow[2] > src.value or flow[2] > des.value or flow[2] < 0:
+            if start_val > src.value or end_val > des.value or start_val < 0 or end_val < 0:
                 print("Warning: Bad flow - bad weight: {}".format(flow))
             if des_level <= src_level:
                 raise ValueError("Bad flow - flow is backwards: {}".format(flow))
@@ -470,7 +479,7 @@ class Sankey:
             args = dict(color=color)
             args.update(self.flow_opts)
             args.update(custom_opts)
-            self.flows.append(SankeyFlow(src, des, flow[2], **args))
+            self.flows.append(SankeyFlow(src, des, start_val, end_val, **args))
 
         # Post-creation layout
         if isinstance(self.align_y, list) or isinstance(self.align_y, tuple) or 'tree' in self.align_y:
@@ -504,8 +513,8 @@ class Sankey:
                     y_anchor = flow.des.get_flow_y(flow.des_i, "inflows")[0]
                     y_flow_node = node.get_flow_y(flow.src_i, "outflows")[0] # since we set y to 0 above, this is the position of the flow in the node
                 y_ideal_node = np.clip(y_anchor - y_flow_node, 0, 1)
-                total_ys += y_ideal_node * flow.value
-                total_weights += flow.value
+                total_ys += y_ideal_node * (flow.end_value if right else flow.start_value)
+                total_weights += (flow.end_value if right else flow.start_value)
             if total_weights > 0:
                 y_ideal[i] = total_ys / total_weights
             else:
