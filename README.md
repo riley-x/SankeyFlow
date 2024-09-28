@@ -47,7 +47,7 @@ The core class is `sankeyflow.Sankey`, which builds and draws the diagram. Data 
 The diagram defaults to a left-to-right flow pattern, and breaks the nodes into "levels," which correspond to the x position. The cutflow diagram above has 5 levels, for example.
 
 - `nodes` is a nested list of length `nlevels`, ordered from left to right. For each level, there is a list of nodes ordered from top to bottom. Each node is a `(name, value)` pair.
-- `flows` is a list of flows, coded as `(source, destination, value)`. `source` and `destination` should match the `name`s in `nodes`.
+- `flows` is a list of flows, coded as `(source, destination, value)`. `source` and `destination` should match the `name`s in `nodes`. Additionally, if `value` is given as a tuple, the value can represent the start and end value of the flow, respectively.
 
 If `nodes` is `None`, the nodes will be automatically inferred and placed from the flows.
 
